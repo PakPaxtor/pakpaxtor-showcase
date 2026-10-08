@@ -999,6 +999,14 @@ body.live:not(.controls-visible) #lightbox .lb-nav,body.live:not(.controls-visib
 <style id="web-controls">
 #controls button[data-command="presenter"],
 #controls button[data-command="materials"] { display: none; }
+#mobile-navigation-hint { display: none; }
+@media (any-pointer: coarse) {
+ .cover .launch .hint { display: none; }
+}
+@media (any-pointer: coarse) and (orientation: portrait) {
+ #mobile-navigation-hint { display:block;position:absolute;left:16px;right:16px;bottom:max(16px,env(safe-area-inset-bottom));margin:0;text-align:center;font:13px/1.5 Arial,Helvetica,sans-serif;color:#a7b3ab;pointer-events:none; }
+ #viewport:has(#overlay.open,#lightbox.open,#lightbox.closing,#player-layer.open,#blackout.on) #mobile-navigation-hint { display:none; }
+}
 </style>
 </head>
 <body>
@@ -1016,7 +1024,7 @@ body.live:not(.controls-visible) #lightbox .lb-nav,body.live:not(.controls-visib
 <section aria-label="Visor de fotos" aria-modal="true" id="lightbox" role="dialog" tabindex="-1"><div class="lb-bg"></div><div class="lb-frame"><img alt="" class="lb-img" draggable="false"/></div><div class="lb-chrome"><span class="lb-count"></span><button aria-label="Cerrar" class="lb-close" data-command="close-lightbox">×</button><button aria-label="Foto anterior" class="lb-nav lb-prev" data-command="lb-prev">←</button><button aria-label="Foto siguiente" class="lb-nav lb-next" data-command="lb-next">→</button><div class="caption"></div><div class="lb-strip"></div></div></section>
 <section aria-label="Reproductor de vídeo" id="player-layer"><video controls="" id="main-player" playsinline="" preload="metadata"></video><button data-command="close-player" id="player-close">Volver · Esc</button><div hidden="" id="player-error"></div><div class="player-end" hidden="">Reproducción terminada.<button class="action small" data-command="replay">Repetir</button><button class="action small ghost" data-command="close-player">Volver a la charla</button></div></section>
 <div aria-label="Pantalla en negro" id="blackout"></div><div id="toast" role="status"></div>
-</main></div>
+</main><p id="mobile-navigation-hint">Desliza ← para avanzar &nbsp;·&nbsp; → para volver</p></div>
 <div hidden="" id="presenter"></div><div hidden="" id="printout"></div>
 <noscript>Esta presentación necesita JavaScript. Abre el archivo con un navegador y permite JavaScript.</noscript>
 <script>// Imágenes que van dentro del HTML (no se leen de assets/).
@@ -2414,6 +2422,43 @@ function handleKey(e){
  const cmd=keys[e.key]||keys[e.key.toLowerCase()];if(cmd){e.preventDefault();command(cmd)}
 }
 function trapFocus(e){const root=$('#lightbox.open')||$('#overlay.open');if(!root)return;const a=$$('button,a[href],input,select,textarea,[tabindex="0"]',root).filter(x=>!x.disabled);if(!a.length)return;const first=a[0],last=a[a.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}
+// En táctil, deslizar cambia de página; los toques siguen abriendo fotos y vídeos.
+function initTouchNavigation(){
+ const viewport=$('#viewport');let gesture=null;
+ const blocked=()=>presenterMode||playerOpen()||lbOpen()||!!$('#overlay.open,#lightbox.closing,#blackout.on')||!!document.fullscreenElement?.matches('video,audio,canvas');
+ const reset=()=>{gesture=null};
+ viewport.addEventListener('touchstart',e=>{
+  reset();
+  if(e.touches.length!==1||blocked()||e.target.closest('input,select,textarea,label,a,video,audio,canvas,[contenteditable],[role="slider"],[data-compare],.panorama-fallback,#controls'))return;
+  const t=e.touches[0];gesture={id:t.identifier,x:t.clientX,y:t.clientY,at:Date.now(),page:current,horizontal:false};
+ },{passive:true});
+ viewport.addEventListener('touchmove',e=>{
+  if(!gesture)return;
+  if(e.touches.length!==1||blocked()||gesture.page!==current){reset();return}
+  const t=e.touches[0];if(t.identifier!==gesture.id){reset();return}
+  const dx=Math.abs(t.clientX-gesture.x),dy=Math.abs(t.clientY-gesture.y);
+  if(!gesture.horizontal){
+   if(dy>12&&dy>=dx){reset();return}
+   if(dx<12||dx<dy*1.5)return;
+   gesture.horizontal=true;
+  }
+  // Solo detenemos el gesto horizontal reconocido; vertical y pellizco son del navegador.
+  if(e.cancelable)e.preventDefault();else reset();
+ },{passive:false});
+ viewport.addEventListener('touchend',e=>{
+  const g=gesture;reset();
+  if(!g||e.touches.length||blocked()||g.page!==current||Date.now()-g.at>1200)return;
+  const t=Array.from(e.changedTouches).find(t=>t.identifier===g.id);if(!t)return;
+  const dx=t.clientX-g.x,dy=t.clientY-g.y,threshold=Math.max(45,Math.min(90,innerWidth*.12));
+  if(!g.horizontal||Math.abs(dx)<threshold||Math.abs(dx)<Math.abs(dy)*1.5)return;
+  // Evita el clic que abriría la imagen o el vídeo al terminar un deslizamiento.
+  if(e.cancelable)e.preventDefault();
+  go(nextIndex(current,dx<0?1:-1),{jump:true});
+ },{passive:false});
+ viewport.addEventListener('touchcancel',reset,{passive:true});
+ window.addEventListener('blur',reset);window.addEventListener('resize',reset);
+ document.addEventListener('visibilitychange',reset);
+}
 function durationOf(file){return new Promise((resolve,reject)=>{const v=document.createElement('video'),src=URL.createObjectURL(file);const timer=setTimeout(()=>{URL.revokeObjectURL(src);reject(new Error('No se pudo leer la duración.'))},5000);v.onloadedmetadata=()=>{clearTimeout(timer);URL.revokeObjectURL(src);resolve(v.duration)};v.onerror=()=>{clearTimeout(timer);URL.revokeObjectURL(src);reject(new Error('Formato no compatible.'))};v.preload='metadata';v.src=src})}
 function initPanorama(){
  const canvas=$('#panorama');if(!canvas)return null;let gl;try{gl=canvas.getContext('webgl',{alpha:false,antialias:false})}catch(e){}
@@ -2467,6 +2512,7 @@ resize();window.addEventListener('resize',resize);window.addEventListener('hashc
 window.addEventListener('message',e=>{if(e.source!==presenterWindow)return;if(e.data?.type==='pak-ready')sendState();if(e.data?.type==='pak-command')command(e.data.command)});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){$$('video,audio').forEach(v=>v.pause())}else{$$('[data-wall-video]').forEach(v=>{v.muted=true;v.play().catch(()=>{})});compStart()}});
 document.addEventListener('fullscreenchange',()=>{refreshLive();if(document.fullscreenElement){try{navigator.keyboard?.lock?.(['Escape'])?.catch?.(()=>{})}catch(e){}}});
+initTouchNavigation();
 document.addEventListener('keydown',handleKey);document.addEventListener('pointermove',showControls,{passive:true});
 // Visor: un clic en la foto la amplía (y la ampliación sigue al ratón); un clic fuera, cierra
 $('#lightbox').addEventListener('click',e=>{if(e.target.closest('button'))return;if(e.target.closest('.lb-frame')){lbZoom(e);return}if(e.target.closest('.caption,.lb-count,.lb-strip'))return;closeLightbox()});
