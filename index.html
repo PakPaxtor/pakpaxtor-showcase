@@ -999,6 +999,11 @@ body.live:not(.controls-visible) #lightbox .lb-nav,body.live:not(.controls-visib
 <style id="web-controls">
 #controls button[data-command="presenter"],
 #controls button[data-command="materials"] { display: none; }
+#player-layer { position:fixed;cursor:auto; }
+#player-close,body.live #player-close { display:block!important;opacity:1;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));padding:12px 18px;font-size:16px; }
+#player-layer .player-end { left:16px;right:16px;bottom:max(80px,env(safe-area-inset-bottom));padding:16px;font-size:16px;flex-wrap:wrap;justify-content:center; }
+#player-layer .player-end button { font-size:16px; }
+[data-player-media] { cursor:pointer; }
 #mobile-navigation-hint { display: none; }
 @media (any-pointer: coarse) {
  .cover .launch .hint { display: none; }
@@ -1022,9 +1027,8 @@ body.live:not(.controls-visible) #lightbox .lb-nav,body.live:not(.controls-visib
 <div class="progress"><span></span></div>
 <section aria-modal="true" id="overlay" role="dialog"></section>
 <section aria-label="Visor de fotos" aria-modal="true" id="lightbox" role="dialog" tabindex="-1"><div class="lb-bg"></div><div class="lb-frame"><img alt="" class="lb-img" draggable="false"/></div><div class="lb-chrome"><span class="lb-count"></span><button aria-label="Cerrar" class="lb-close" data-command="close-lightbox">×</button><button aria-label="Foto anterior" class="lb-nav lb-prev" data-command="lb-prev">←</button><button aria-label="Foto siguiente" class="lb-nav lb-next" data-command="lb-next">→</button><div class="caption"></div><div class="lb-strip"></div></div></section>
-<section aria-label="Reproductor de vídeo" id="player-layer"><video controls="" id="main-player" playsinline="" preload="metadata"></video><button data-command="close-player" id="player-close">Volver · Esc</button><div hidden="" id="player-error"></div><div class="player-end" hidden="">Reproducción terminada.<button class="action small" data-command="replay">Repetir</button><button class="action small ghost" data-command="close-player">Volver a la charla</button></div></section>
 <div aria-label="Pantalla en negro" id="blackout"></div><div id="toast" role="status"></div>
-</main><p id="mobile-navigation-hint">Desliza ← para avanzar &nbsp;·&nbsp; → para volver</p></div>
+</main><section aria-label="Reproductor de vídeo" aria-modal="true" role="dialog" id="player-layer"><video controls="" id="main-player" playsinline="" preload="metadata" aria-label="Vídeo" tabindex="0"></video><button data-command="close-player" id="player-close">Volver · Esc</button><div hidden="" id="player-error"></div><div class="player-end" hidden="">Reproducción terminada.<button class="action small" data-command="replay">Repetir</button><button class="action small ghost" data-command="close-player">Volver</button></div></section><p id="mobile-navigation-hint">Desliza ← para avanzar &nbsp;·&nbsp; → para volver</p></div>
 <div hidden="" id="presenter"></div><div hidden="" id="printout"></div>
 <noscript>Esta presentación necesita JavaScript. Abre el archivo con un navegador y permite JavaScript.</noscript>
 <script>// Imágenes que van dentro del HTML (no se leen de assets/).
@@ -1887,6 +1891,8 @@ const play=(id,label,cls='')=>`<button class="action ${cls}" data-play="${id}">$
 let current=Math.max(0,Math.min(C.slides.length-1,(parseInt(location.hash.slice(1),10)||1)-1)), gallery=0,nbTab=0,nbMatch=0,animaTab=0,graphIndex=0,step=0;
 let presenterWindow=null,clockStart=null,clockSaved=0,timerRunning=false,slideStart=Date.now(),lastFocus=null,panoCleanup=null;
 let currentPlayback=null,toastTimeout=null, controlsTimeout=null;
+let playerReturnFocus=null,pausedPreviewMedia=[];
+const playbackPositions=new Map();
 const presenterMode=new URLSearchParams(location.search).get('presenter')==='1';
 const nbCast=[
  {name:'Hazard',identity:'Amarillo / negro',chandal:'nb-hazard-chandal.jpg',traje:'nb-hazard-traje.jpg',detail:'Dos vestuarios para una misma identidad: rostro, peinado y rasgos reconocibles se mantienen entre planos.'},
@@ -1938,18 +1944,18 @@ function castingView(){return `<section class="slide v4-cast"><div class="eyebro
 /* v13 · Composición de Balay: los tres vídeos a la vez, uno al lado del otro (plate limpio, con la actriz y plano final), en silencio y en bucle */
 const compKeys=['balayPlate','balayActress','balayComp'],compLabels=['Plate limpio','Con la actriz','Plano final'];
 const compDesc=['El encuadre, sin la actriz: la base limpia.','Su acción marca los cruces y las oclusiones.','Los gatos, generados con Kling e integrados.'];
-function compositionView(){return `<section class="slide v4-composition v13-comp"><div class="eyebrow accent">BALAY / CÁMARA FIJA · GENERACIÓN · COMPOSICIÓN</div><h2>Rodar pensando <span class="serif">en la integración.</span></h2><div class="v13-comp-row">${compKeys.map((id,i)=>`<figure><div class="v13-comp-video">${has(id)?`<video data-comp-video muted playsinline preload="auto" src="${esc(murl(id))}" aria-label="${esc(compLabels[i])}"></video><span class="tc" aria-hidden="true">00:00:00:00</span>`:`<div class="empty-visual"><span>${esc(compLabels[i])}</span></div>`}</div><figcaption><span>0${i+1}</span>${compLabels[i]}</figcaption><p>${compDesc[i]}</p></figure>`).join('')}</div><p class="v4-bottom">PAK PAXTOR / AI CONSULTANT · AI GENERATION <span>SINEDIE / POSTPRODUCCIÓN</span></p></section>`}
+function compositionView(){return `<section class="slide v4-composition v13-comp"><div class="eyebrow accent">BALAY / CÁMARA FIJA · GENERACIÓN · COMPOSICIÓN</div><h2>Rodar pensando <span class="serif">en la integración.</span></h2><div class="v13-comp-row">${compKeys.map((id,i)=>`<figure><div class="v13-comp-video">${has(id)?`<video data-comp-video data-player-media="${id}" role="button" tabindex="0" muted playsinline preload="auto" src="${esc(murl(id))}" aria-label="${esc(compLabels[i])}"></video><span class="tc" aria-hidden="true">00:00:00:00</span>`:`<div class="empty-visual"><span>${esc(compLabels[i])}</span></div>`}</div><figcaption><span>0${i+1}</span>${compLabels[i]}</figcaption><p>${compDesc[i]}</p></figure>`).join('')}</div><p class="v4-bottom">PAK PAXTOR / AI CONSULTANT · AI GENERATION <span>SINEDIE / POSTPRODUCCIÓN</span></p></section>`}
 // Los tres arrancan juntos (al entrar, cuando todos pueden reproducirse) y, cuando acaba el último o 1,5 s después del primero, vuelven a empezar juntos.
 let compWait=null;
-function compStart(fresh){clearTimeout(compWait);compWait=null;const vs=$$('[data-comp-video]');if(!vs.length)return;vs.forEach(v=>{v.muted=true;v.defaultMuted=true;v.volume=0;if(!fresh)try{v.currentTime=0}catch(e){}});const go=()=>{if(vs[0].isConnected)vs.forEach(v=>v.play().catch(()=>{}))};if(!fresh){go();return}Promise.race([Promise.all(vs.map(v=>v.readyState>=3?null:new Promise(r=>v.addEventListener('canplay',r,{once:true})))),new Promise(r=>setTimeout(r,2000))]).then(go)}
+function compStart(fresh){clearTimeout(compWait);compWait=null;if(playerOpen()||document.hidden)return;const vs=$$('#screen [data-comp-video]');if(!vs.length)return;vs.forEach(v=>{v.muted=true;v.defaultMuted=true;v.volume=0;if(!fresh)try{v.currentTime=0}catch(e){}});const go=()=>{if(vs[0].isConnected&&$('#screen').contains(vs[0])&&!playerOpen()&&!document.hidden)vs.forEach(v=>v.play().catch(()=>{}))};if(!fresh){go();return}Promise.race([Promise.all(vs.map(v=>v.readyState>=3?null:new Promise(r=>v.addEventListener('canplay',r,{once:true})))),new Promise(r=>setTimeout(r,2000))]).then(go)}
 // Balay: el mismo código de tiempo sobre los tres vídeos (se ve que van juntos)
 let tcRaf=0;
 function tcRun(){cancelAnimationFrame(tcRaf);const tick=()=>{const vs=$$('#screen [data-comp-video]');if(!vs.length){tcRaf=0;return}vs.forEach(v=>{const el=v.nextElementSibling;if(el&&el.classList.contains('tc')){const t=v.currentTime||0;el.textContent=`00:00:${String(Math.floor(t)).padStart(2,'0')}:${String(Math.floor(t%1*25)).padStart(2,'0')}`}});tcRaf=requestAnimationFrame(tick)};tick()}
 function compEnded(){const vs=$$('[data-comp-video]');if(vs.every(v=>v.ended))compStart();else if(!compWait)compWait=setTimeout(compStart,1500)}
 function campaignWall(){
  const ids=Array.from({length:6},(_,i)=>'campaign'+(i+1)),ready=scanned?ids.filter(has):ids,n=ready.length;
- return `<section class="slide v4-wall"><div class="eyebrow accent">PUBLICIDAD / OTROS TRABAJOS EN EMISIÓN</div><h2>Publicidad con IA. <span class="serif">Ya en emisión.</span></h2><div class="campaign-grid count-${n}">${ready.map((id,i)=>{const name=media(id).label;return `<div class="campaign-tile" style="--i:${i}">${has(id)?`<video data-wall-video muted autoplay loop playsinline preload="auto" src="${esc(murl(id))}" aria-label="Campaña ${i+1}${name?' · '+esc(name):''}"></video>`:`<span class="empty-ordinal">0${i+1}</span>`}${name?`<div class="campaign-label"><span>0${i+1}</span><strong>${esc(name)}</strong></div>`:''}</div>`}).join('')}</div><p class="v4-bottom">DISTINTAS MARCAS. DISTINTAS NECESIDADES. <span>LA IA AL SERVICIO DE CADA PIEZA.</span></p></section>`}
-function astronautView(){return `<section class="slide v4-astronaut"><div class="eyebrow accent">CAMPAÑA / IZERTIS</div><div class="astro-copy"><h2>Trust AI<span class="serif accent">.</span></h2><p class="v4-lead">Dirección creativa y generación con IA.</p><div class="astro-credits"><small>DIRECCIÓN CREATIVA Y GENERACIÓN IA</small><strong>Pak Paxtor</strong><p>En colaboración con <b>Sinedie</b><br>para ${creditLink('ProudMary Agency','https://www.instagram.com/proudmary.agency/')}</p><small>CLIENTE</small>${creditLink('Izertis','https://www.instagram.com/izertis/')}</div></div><div class="astro-video">${has('izertis')?`<video data-astro-preview muted playsinline preload="metadata" src="${esc(murl('izertis'))}"></video>`:`<div class="vertical-label"><span>IZERTIS</span><strong>TRUST AI</strong><small>16:9 / 00:10</small></div>`}${play('izertis','Reproducir · 00:10','small')}</div></section>`}
+ return `<section class="slide v4-wall"><div class="eyebrow accent">PUBLICIDAD / OTROS TRABAJOS EN EMISIÓN</div><h2>Publicidad con IA. <span class="serif">Ya en emisión.</span></h2><div class="campaign-grid count-${n}">${ready.map((id,i)=>{const name=media(id).label;return `<div class="campaign-tile" style="--i:${i}">${has(id)?`<video data-wall-video data-player-media="${id}" role="button" tabindex="0" muted autoplay loop playsinline preload="auto" src="${esc(murl(id))}" aria-label="Campaña ${i+1}${name?' · '+esc(name):''}"></video>`:`<span class="empty-ordinal">0${i+1}</span>`}${name?`<div class="campaign-label"><span>0${i+1}</span><strong>${esc(name)}</strong></div>`:''}</div>`}).join('')}</div><p class="v4-bottom">DISTINTAS MARCAS. DISTINTAS NECESIDADES. <span>LA IA AL SERVICIO DE CADA PIEZA.</span></p></section>`}
+function astronautView(){return `<section class="slide v4-astronaut"><div class="eyebrow accent">CAMPAÑA / IZERTIS</div><div class="astro-copy"><h2>Trust AI<span class="serif accent">.</span></h2><p class="v4-lead">Dirección creativa y generación con IA.</p><div class="astro-credits"><small>DIRECCIÓN CREATIVA Y GENERACIÓN IA</small><strong>Pak Paxtor</strong><p>En colaboración con <b>Sinedie</b><br>para ${creditLink('ProudMary Agency','https://www.instagram.com/proudmary.agency/')}</p><small>CLIENTE</small>${creditLink('Izertis','https://www.instagram.com/izertis/')}</div></div><div class="astro-video">${has('izertis')?`<video data-astro-preview data-player-media="izertis" role="button" tabindex="0" aria-label="Reproducir Trust AI" muted playsinline preload="metadata" src="${esc(murl('izertis'))}"></video>`:`<div class="vertical-label"><span>IZERTIS</span><strong>TRUST AI</strong><small>16:9 / 00:10</small></div>`}${play('izertis','Reproducir · 00:10','small')}</div></section>`}
 /* v13 · Archivo: las fotos de 1995, como copias tiradas sobre la mesa (caen una a una al entrar; clic para ampliar). Una foto que falta no sale */
 const archivePrints=[{id:'archiveCamp1',alt:'El campamento, 1995',x:0,y:16,w:360,r:-3.5,ar:1.411,z:1},{id:'archiveCamp4',alt:'La laguna',x:345,y:0,w:318,r:2.2,ar:1.333,z:2},{id:'archiveCamp3',alt:'Las tiendas, 1995',x:620,y:24,w:330,r:-2.4,ar:1.778,z:1},{id:'archivePak',alt:'Pak, 1995',cap:'Pak',x:34,y:206,w:176,r:-6,ar:.8,z:4},{id:'archiveCamp2',alt:'Delante de la tienda, 1995',x:262,y:188,w:372,r:1.6,ar:1.395,z:3},{id:'archiveAlvaro',alt:'Álvaro, 1995',cap:'Álvaro',x:716,y:200,w:176,r:5,ar:.8,z:4}];
 function archivePile(){const ps=archivePrints.filter(p=>has(p.id));return `<div class="archive-prints">${ps.length?ps.map((p,i)=>`<button class="print${p.cap?' print-cap':''}" data-media-image="${p.id}" data-alt="${esc(p.alt)}" style="left:${p.x}px;top:${p.y}px;width:${p.w}px;z-index:${p.z};--r:${p.r}deg;--ar:${p.ar};animation-delay:${i*80}ms;--pd:${i*80}ms"><img src="${esc(murl(p.id))}" alt="${esc(p.alt)}" draggable="false">${p.cap?`<span>${p.cap}</span>`:''}</button>`).join(''):'<div class="empty-visual"><span>Fotos de 1995</span></div>'}</div>`}
@@ -2008,7 +2014,7 @@ const anvParts=[['00:00','El problema','una canción sin alma','lime'],['00:10',
 function animaVideoView(){return `<section class="slide v13-anv"><div class="anv-copy"><div class="eyebrow accent">ÁNIMA / MI PROYECTO DE IDENTIDADES ARTÍSTICAS</div><h2>Ánima.</h2><p class="an2-sub">Artistas con voz propia y continuidad.</p>`
  +`<ol class="anv-parts">${anvParts.map(([t,n,d,c],i)=>`<li class="c-${c}" style="--i:${i}"><time>${t}</time><strong>${n}</strong><span>${d}</span></li>`).join('')}</ol>`
  +`<div class="actions">${play('animaVideo','Ver el vídeo · 01:10')}</div></div>`
- +`<figure class="anv-phone"><div class="anv-screen"><video class="anv-prev" src="${esc(murl('animaVideo'))}#t=28.9" muted playsinline preload="metadata" tabindex="-1" aria-hidden="true"></video><button class="anv-play" data-play="animaVideo" aria-label="Ver el vídeo de Ánima">${icon}</button></div><figcaption>EXPLICADO CON MALCOLM · 1:10 · CON SONIDO</figcaption></figure></section>`}
+ +`<figure class="anv-phone"><div class="anv-screen"><video data-player-media="animaVideo" class="anv-prev" src="${esc(murl('animaVideo'))}#t=28.9" muted playsinline preload="metadata" tabindex="-1" aria-hidden="true"></video><button class="anv-play" data-play="animaVideo" aria-label="Ver el vídeo de Ánima">${icon}</button></div><figcaption>EXPLICADO CON MALCOLM · 1:10 · CON SONIDO</figcaption></figure></section>`}
 function animaIntroView(){return `<section class="slide v13-an2"><div class="eyebrow accent">ÁNIMA / MI PROYECTO DE IDENTIDADES ARTÍSTICAS</div><h2>Ánima.</h2><p class="an2-sub">Artistas con voz propia y continuidad.</p>`
  +`<ol class="an2-steps">${anSteps.map((t,i)=>`<li data-an="${i}" class="${i===step?'cur':i<step?'done':''}"><small>0${i+1}</small>${t}</li>`).join('')}</ol>`
  +`<svg class="an2-scene" viewBox="0 0 1444 500" aria-hidden="true"><defs><marker id="an2-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z"/></marker></defs>`
@@ -2116,7 +2122,7 @@ function render(){
  if(presenterMode)return;
  $$('video,audio',$('#screen')).forEach(v=>v.pause());
  if(panoCleanup){panoCleanup();panoCleanup=null}
- closePlayer();$('#overlay').classList.remove('open');closeLightbox(true);
+ closePlayer(false);$('#overlay').classList.remove('open');closeLightbox(true);
  paint(true);
  $('#footer .chapter').textContent=C.slides[current].chapter;$('#footer .index').textContent=`${String(current+1).padStart(2,'0')} / ${String(C.slides.length).padStart(2,'0')}`;
  $('.progress>span').style.width=`${100*(current+1)/C.slides.length}%`;
@@ -2174,7 +2180,7 @@ function startClock(){if(!timerRunning){clockStart=Date.now();timerRunning=true}
 function pauseClock(){if(timerRunning){clockSaved=elapsed();timerRunning=false}refreshLive();sendState()}
 function resetClock(){timerRunning=false;clockStart=null;clockSaved=0;slideStart=Date.now();slideStartElapsed=0;refreshLive();sendState()}
 // Modo directo: pantalla completa o reloj en marcha. Sin botones, avisos ni cursor para el público.
-function setLive(on){if(live===on)return;live=on;document.body.classList.toggle('live',on);if(playerOpen())$('#main-player').controls=!on;if(on)$('#toast').classList.remove('show');sendState()}
+function setLive(on){if(live===on)return;live=on;document.body.classList.toggle('live',on);if(playerOpen())$('#main-player').controls=true;if(on)$('#toast').classList.remove('show');sendState()}
 function refreshLive(){setLive(!!document.fullscreenElement||timerRunning)}
 function state(){
  const s=C.slides[current],v=$('#main-player'),tape=$('#archive-player'),n=nextIndex(current,1);
@@ -2253,34 +2259,45 @@ function downloadChecklist(){
  const blob=new Blob([text],{type:'text/markdown;charset=utf-8'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='Archivos_TV_or_not_TV.md';a.click();setTimeout(()=>URL.revokeObjectURL(u),30000);
 }
 function notes(){openOverlay('Guion de esta pantalla.',`<div class="notes-body"><div class="cue">NOTAS DE ENSAYO · Estas notas son visibles en esta ventana.<br>${esc(C.slides[current].cue)}</div>${paragraphs(C.slides[current].notes)}</div>`)}
-function help(){openOverlay('El ritmo lo marcas tú.',`<div class="keys">${[['→ / AvPág','Siguiente: primero el vídeo o los pasos de la pantalla'],['← / RePág','Anterior'],['Espacio','Reproducir / pausar; con el vídeo acabado, sigue'],['→ →','Dos veces seguidas: salir de un vídeo en marcha'],['F','Pantalla completa (modo directo)'],['P','Ventana de ponente'],['O','Índice'],['M','Preparar: archivos de assets/'],['N','Notas de esta pantalla (ensayo)'],['B / .','Pantalla en negro / volver'],['H','Ocultar la interfaz'],['Esc','Cerrar vídeo, imagen o panel'],['1–5','Vistas internas; → también las recorre en composición, OpenCanon, Raccord, universo y respuesta'],['I','Créditos'],['T','Iniciar / pausar el cronómetro'],['Clic en una foto','Visor: → ← pasan de foto sin cerrar; Z amplía; Esc, o → tras la última, vuelven'],['E','Efectos: transiciones, revelado y textura de cine (activar / desactivar)']].map(([k,t])=>`<div><kbd>${k}</kbd><span>${t}</span></div>`).join('')}</div><p class="overlay-sub" style="margin-top:40px">En sala, usa escritorio extendido: presentación en el proyector y ventana de ponente en tu portátil. El reloj arranca al salir de la portada. Al terminar Neck Brace, la cartela final entra sola.</p>`)}
+function help(){openOverlay('El ritmo lo marcas tú.',`<div class="keys">${[['→ / AvPág','Siguiente: primero el vídeo o los pasos de la pantalla'],['← / RePág','Anterior'],['Espacio','Reproducir / pausar; al terminar, repetir'],['← / → en vídeo','Retroceder / avanzar 5 segundos'],['F','Pantalla completa (modo directo)'],['P','Ventana de ponente'],['O','Índice'],['M','Preparar: archivos de assets/'],['N','Notas de esta pantalla (ensayo)'],['B / .','Pantalla en negro / volver'],['H','Ocultar la interfaz'],['Esc','Cerrar vídeo, imagen o panel'],['1–5','Vistas internas; → también las recorre en composición, OpenCanon, Raccord, universo y respuesta'],['I','Créditos'],['T','Iniciar / pausar el cronómetro'],['Clic en una foto','Visor: → ← pasan de foto sin cerrar; Z amplía; Esc, o → tras la última, vuelven'],['E','Efectos: transiciones, revelado y textura de cine (activar / desactivar)']].map(([k,t])=>`<div><kbd>${k}</kbd><span>${t}</span></div>`).join('')}</div><p class="overlay-sub" style="margin-top:40px">En sala, usa escritorio extendido: presentación en el proyector y ventana de ponente en tu portátil. El reloj arranca al salir de la portada. Al terminar un vídeo, puedes repetirlo o volver a la página.</p>`)}
 function sources(){showCredits()}
 
 /* ---------- v6: reproductor ---------- */
-function playMedia(id){
+function playMedia(id,opts={}){
  if(id==='archiveAudio'){const audio=$('#archive-player');if(audio){played.add(id);audio.paused?audio.play().catch(()=>note('Pulsa reproducir en la cinta.')):audio.pause();sendState()}else note('Falta la cinta: '+expectedName(id)+'.');return}
  const src=murl(id);if(!src){note('Falta '+expectedName(id)+'. Ponlo en la carpeta assets/ o elígelo en Preparar (M).');return}
+ if(!playerOpen()){playerReturnFocus=document.activeElement;pausedPreviewMedia=$$('video,audio',$('#screen')).filter(v=>!v.paused)}
+ clearTimeout(compWait);compWait=null;
  $$('video,audio',$('#screen')).forEach(v=>v.pause());
  const v=$('#main-player'),layer=$('#player-layer');clearTimeout(fadeTimer);currentPlayback=id;played.add(id);
- v.pause();v.removeAttribute('src');v.load();v.src=src;v.controls=!live;v.muted=false;
+ if(opts.restart)playbackPositions.set(id,0);
+ v.pause();v.removeAttribute('src');v.load();v.src=src;v.controls=true;v.muted=false;v.setAttribute('aria-label',media(id)?.name||'Vídeo');
  $('#player-error').hidden=true;$('.player-end').hidden=true;$('#overlay').classList.remove('open');layer.classList.remove('closing','ending');layer.classList.add('open');
- playerFull(true);v.play().catch(()=>note('El navegador no dejó arrancar el vídeo: pulsa espacio.'));sendState();
+ $('#stage').inert=true;
+ v.focus({preventScroll:true});v.play().catch(()=>note('Pulsa reproducir en el vídeo.'));sendState();
 }
-// Los vídeos se ven a pantalla completa y sin el botón «Volver»: se sale con Esc o con → dos veces. Si la presentación ya está a pantalla completa, basta con la capa.
-function playerFull(on){const l=$('#player-layer');if(on){if(!document.fullscreenElement&&l.requestFullscreen)l.requestFullscreen().catch(()=>{})}else if(document.fullscreenElement===l)document.exitFullscreen().catch(()=>{})}
-function closePlayer(){playerFull(false);clearTimeout(fadeTimer);if(/^Vídeo en marcha/.test(hintText))hintUntil=0;const v=$('#main-player');if(!v)return;v.pause();v.removeAttribute('src');v.load();$('#player-layer').classList.remove('open','closing','ending');$('.player-end').hidden=true;currentPlayback=null}
-// Al terminar: fundido y vuelta a la pantalla; Neck Brace funde a negro y da paso a la cartela final.
+// Todos los vídeos usan los mismos controles; pantalla completa es opcional.
+function playerFull(on){const l=$('#player-layer');if(on){if(!document.fullscreenElement&&l.requestFullscreen)l.requestFullscreen().catch(()=>{})}else if(document.fullscreenElement===l||l.contains(document.fullscreenElement))document.exitFullscreen().catch(()=>{})}
+function closePlayer(resume=true){
+ const wasOpen=playerOpen(),v=$('#main-player');if(!v)return;
+ if(currentPlayback)playbackPositions.set(currentPlayback,v.ended?0:v.currentTime||0);
+ playerFull(false);clearTimeout(fadeTimer);if(/^Vídeo en marcha/.test(hintText))hintUntil=0;
+ v.pause();v.removeAttribute('src');v.load();$('#player-layer').classList.remove('open','closing','ending');$('.player-end').hidden=true;currentPlayback=null;
+ $('#stage').inert=false;
+ const previews=pausedPreviewMedia;pausedPreviewMedia=[];
+ if(resume&&wasOpen){if(!document.hidden){previews.filter(v=>v.isConnected&&$('#screen').contains(v)&&!v.hasAttribute('data-comp-video')).forEach(v=>v.play().catch(()=>{}));compStart()}if(playerReturnFocus?.isConnected)playerReturnFocus.focus({preventScroll:true})}
+ playerReturnFocus=null;
+}
+// Al terminar, conserva el reproductor para poder repetir, buscar otra posición o volver.
 function finishPlayback(){
- const id=currentPlayback,s=C.slides[current],layer=$('#player-layer');if(!id||layer.classList.contains('closing')||layer.classList.contains('ending'))return;
- playerFull(false);
- if(s.autoNext&&s.play===id){layer.classList.add('ending');fadeTimer=setTimeout(()=>{closePlayer();go(nextIndex(current,1),{instant:true})},1500)}
- else{layer.classList.add('closing');fadeTimer=setTimeout(closePlayer,700)}
+ if(!currentPlayback)return;
+ playbackPositions.set(currentPlayback,0);$('.player-end').hidden=false;
  sendState();
 }
 function togglePlay(){
  if(unblack())return;
  if(lbOpen()){lbStep(1);return}
- if(playerOpen()){const v=$('#main-player');if(v.ended){finishPlayback();return}v.paused?v.play().catch(()=>{}):v.pause();sendState();return}
+ if(playerOpen()){const v=$('#main-player');if(v.ended){playMedia(currentPlayback,{restart:true});return}v.paused?v.play().catch(()=>{}):v.pause();sendState();return}
  if(C.slides[current].play==='archiveAudio'&&$('#archive-player')){playMedia('archiveAudio');return}
  advance();
 }
@@ -2388,7 +2405,7 @@ function openPresenter(){
 function exitTop(){const fe=document.fullscreenElement;if(fe&&fe.matches&&fe.matches('[data-comp-video],[data-wall-video]')){document.exitFullscreen().catch(()=>{});return}if($('#blackout').classList.contains('on')){$('#blackout').classList.remove('on');sendState();return}if(playerOpen()){closePlayer();sendState();return}if(lbOpen()||$('#lightbox').classList.contains('closing')){closeLightbox();return}closeOverlay()}
 async function command(cmd){
  switch(cmd){case'download-checklist':downloadChecklist();break;case'credits':showCredits();break;case'room':openRoom();break;
- case'advance':case'next':advance();break;case'back':case'prev':back();break;case'toggle-play':togglePlay();break;case'escape':exitTop();break;
+ case'advance':case'next':advance();break;case'back':case'prev':back();break;case'toggle-play':togglePlay();break;case'escape':exitTop();break;case'replay':if(currentPlayback)playMedia(currentPlayback,{restart:true});break;
  case'start':try{await document.documentElement.requestFullscreen()}catch(e){}setLive(true);note('Modo directo. → empieza la charla y pone en marcha el reloj.');break;
  case'rescan':note('Buscando archivos en assets/…');await scanAssets();note('Búsqueda terminada.');break;
  case'overview':overview();break;case'materials':materials();break;case'notes':notes();break;case'help':help();break;case'sources':sources();break;case'presenter':openPresenter();break;case'close-overlay':closeOverlay();break;case'close-player':closePlayer();sendState();break;case'close-lightbox':closeLightbox();break;case'lb-prev':lbStep(-1);break;case'lb-next':lbStep(1);break;case'fx':fxOn=!fxOn;fxApply();note(fxOn?'Efectos activados.':'Efectos desactivados: sin transiciones, revelado ni textura de cine.');break;case'archive':go(C.slides.findIndex(s=>s.id==='archivo'));break;
@@ -2409,6 +2426,15 @@ function handleKey(e){
  if(e.ctrlKey||e.metaKey||e.altKey)return;
  if(e.key==='F5'){e.preventDefault();command('start');return}
  if(e.key==='Escape'){exitTop();return}
+ if(playerOpen()){
+  const v=$('#main-player');
+  if(e.key===' '&&!document.activeElement?.closest('button')){e.preventDefault();togglePlay();return}
+  if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();if(Number.isFinite(v.duration))v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+(e.key==='ArrowRight'?5:-5)));return}
+  if(e.key.toLowerCase()==='f'){e.preventDefault();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else playerFull(true);return}
+  if(e.key==='Tab')trapFocus(e);
+  return;
+ }
+ if(['Enter',' '].includes(e.key)&&document.activeElement?.hasAttribute('data-player-media')){e.preventDefault();playMedia(document.activeElement.dataset.playerMedia);return}
  // Visor abierto: → ← (y el mando) pasan de foto; Inicio y Fin; Z amplía
  if(lbOpen()){const k=e.key;if(['ArrowRight','PageDown','ArrowDown',' '].includes(k)){e.preventDefault();lbStep(1);return}if(['ArrowLeft','PageUp','ArrowUp'].includes(k)){e.preventDefault();lbStep(-1);return}if(k==='Home'||k==='End'){e.preventDefault();lbShow(k==='Home'?0:lb.items.length-1,k==='Home'?-1:1);return}if(k==='z'||k==='Z'){e.preventDefault();lbZoom();return}if(k==='Tab')trapFocus(e);return}
  // Índice abierto: las flechas (y el mando) mueven la selección; Intro entra
@@ -2421,7 +2447,7 @@ function handleKey(e){
  const keys={ArrowRight:'advance',PageDown:'advance',ArrowDown:'advance',ArrowLeft:'back',PageUp:'back',ArrowUp:'back',' ':'toggle-play',f:'fullscreen',p:'presenter',o:'overview',m:'materials',n:'notes',b:'blackout','.':'blackout',h:'clean','?':'help',i:'sources',t:'clock',e:'fx'};
  const cmd=keys[e.key]||keys[e.key.toLowerCase()];if(cmd){e.preventDefault();command(cmd)}
 }
-function trapFocus(e){const root=$('#lightbox.open')||$('#overlay.open');if(!root)return;const a=$$('button,a[href],input,select,textarea,[tabindex="0"]',root).filter(x=>!x.disabled);if(!a.length)return;const first=a[0],last=a[a.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}
+function trapFocus(e){const root=$('#lightbox.open')||$('#overlay.open');if(!root)return;const a=$$('video[controls],button,a[href],input,select,textarea,[tabindex="0"]',root).filter(x=>!x.disabled&&!x.closest('[hidden]'));if(!a.length)return;const first=a[0],last=a[a.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}
 // En táctil, deslizar cambia de página; los toques siguen abriendo fotos y vídeos.
 function initTouchNavigation(){
  const viewport=$('#viewport');let gesture=null;
@@ -2510,7 +2536,7 @@ function initPresenter(){
 if(presenterMode){initPresenter();return}
 resize();window.addEventListener('resize',resize);window.addEventListener('hashchange',()=>{const n=parseInt(location.hash.slice(1),10);if(n&&n-1!==current)go(n-1)});
 window.addEventListener('message',e=>{if(e.source!==presenterWindow)return;if(e.data?.type==='pak-ready')sendState();if(e.data?.type==='pak-command')command(e.data.command)});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){$$('video,audio').forEach(v=>v.pause())}else{$$('[data-wall-video]').forEach(v=>{v.muted=true;v.play().catch(()=>{})});compStart()}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){$$('video,audio').forEach(v=>v.pause())}else if(!playerOpen()){$$('#screen [data-wall-video]').forEach(v=>{v.muted=true;v.play().catch(()=>{})});compStart()}});
 document.addEventListener('fullscreenchange',()=>{refreshLive();if(document.fullscreenElement){try{navigator.keyboard?.lock?.(['Escape'])?.catch?.(()=>{})}catch(e){}}});
 initTouchNavigation();
 document.addEventListener('keydown',handleKey);document.addEventListener('pointermove',showControls,{passive:true});
@@ -2520,8 +2546,8 @@ $('#lightbox').addEventListener('pointermove',e=>{const fr=$('#lightbox .lb-fram
 // La cinta: el vúmetro se mueve mientras suena
 ['play','pause','ended'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target.id==='archive-player')e.target.closest('.archive-audio')?.classList.toggle('playing',ev==='play')},true));
 // Una imagen que falta no enseña el icono roto al público.
-// Los vídeos en bucle de las pantallas (composición y mosaico): un clic los pone a pantalla completa; otro clic o Esc vuelve.
-document.addEventListener('click',e=>{const v=e.target.closest&&e.target.closest('[data-comp-video],[data-wall-video]');if(!v)return;if(document.fullscreenElement===v){document.exitFullscreen().catch(()=>{});return}v.requestFullscreen?.().catch(()=>{})});
+// Los vídeos de las páginas se abren en el reproductor común, igual que los botones.
+document.addEventListener('click',e=>{const v=e.target.closest&&e.target.closest('[data-player-media]');if(v)playMedia(v.dataset.playerMedia)});
 document.addEventListener('ended',e=>{if(e.target.matches&&e.target.matches('[data-comp-video]'))compEnded()},true);
 document.addEventListener('error',e=>{const t=e.target;if(t&&t.tagName==='IMG'&&!t.classList.contains('img-missing')){t.classList.add('img-missing')}},true);
 document.addEventListener('click',e=>{
@@ -2548,6 +2574,8 @@ document.addEventListener('change',async e=>{
  try{await db.put(id,{blob:f,name:f.name,duration});note(f.name+' queda guardado en este navegador.')}catch(err){note(f.name+' se usará solo en esta sesión: el navegador no dejó guardarlo.')}
 });
 $('#main-player').addEventListener('ended',finishPlayback);
+$('#main-player').addEventListener('loadedmetadata',()=>{const v=$('#main-player'),t=playbackPositions.get(currentPlayback)||0;if(t>0&&Number.isFinite(v.duration))v.currentTime=Math.min(t,Math.max(0,v.duration-.1))});
+['play','seeking'].forEach(ev=>$('#main-player').addEventListener(ev,()=>{$('.player-end').hidden=true}));
 $('#main-player').addEventListener('error',()=>{if(!currentPlayback)return;const m=media(currentPlayback);closePlayer();note('No se ha podido reproducir '+(m?.name||'el vídeo')+'. Revisa el archivo en Preparar (M).')});
 fxApply();setInterval(sendState,500);go(current,{force:true,instant:true});showControls();
 restoreLocal().then(()=>{afterMediaChange();return scanAssets()});
