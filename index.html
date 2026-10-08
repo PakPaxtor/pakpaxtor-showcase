@@ -2259,7 +2259,7 @@ function downloadChecklist(){
  const blob=new Blob([text],{type:'text/markdown;charset=utf-8'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='Archivos_TV_or_not_TV.md';a.click();setTimeout(()=>URL.revokeObjectURL(u),30000);
 }
 function notes(){openOverlay('Guion de esta pantalla.',`<div class="notes-body"><div class="cue">NOTAS DE ENSAYO · Estas notas son visibles en esta ventana.<br>${esc(C.slides[current].cue)}</div>${paragraphs(C.slides[current].notes)}</div>`)}
-function help(){openOverlay('El ritmo lo marcas tú.',`<div class="keys">${[['→ / AvPág','Siguiente: primero el vídeo o los pasos de la pantalla'],['← / RePág','Anterior'],['Espacio','Reproducir / pausar; al terminar, repetir'],['← / → en vídeo','Retroceder / avanzar 5 segundos'],['F','Pantalla completa (modo directo)'],['P','Ventana de ponente'],['O','Índice'],['M','Preparar: archivos de assets/'],['N','Notas de esta pantalla (ensayo)'],['B / .','Pantalla en negro / volver'],['H','Ocultar la interfaz'],['Esc','Cerrar vídeo, imagen o panel'],['1–5','Vistas internas; → también las recorre en composición, OpenCanon, Raccord, universo y respuesta'],['I','Créditos'],['T','Iniciar / pausar el cronómetro'],['Clic en una foto','Visor: → ← pasan de foto sin cerrar; Z amplía; Esc, o → tras la última, vuelven'],['E','Efectos: transiciones, revelado y textura de cine (activar / desactivar)']].map(([k,t])=>`<div><kbd>${k}</kbd><span>${t}</span></div>`).join('')}</div><p class="overlay-sub" style="margin-top:40px">En sala, usa escritorio extendido: presentación en el proyector y ventana de ponente en tu portátil. El reloj arranca al salir de la portada. Al terminar un vídeo, puedes repetirlo o volver a la página.</p>`)}
+function help(){openOverlay('El ritmo lo marcas tú.',`<div class="keys">${[['→ / AvPág','Siguiente: primero el vídeo o los pasos de la pantalla'],['← / RePág','Anterior'],['Espacio','Reproducir / pausar; al terminar, repetir'],['← / → en vídeo','Retroceder / avanzar en el vídeo'],['F','Pantalla completa (modo directo)'],['P','Ventana de ponente'],['O','Índice'],['M','Preparar: archivos de assets/'],['N','Notas de esta pantalla (ensayo)'],['B / .','Pantalla en negro / volver'],['H','Ocultar la interfaz'],['Esc','Cerrar vídeo, imagen o panel'],['1–5','Vistas internas; → también las recorre en composición, OpenCanon, Raccord, universo y respuesta'],['I','Créditos'],['T','Iniciar / pausar el cronómetro'],['Clic en una foto','Visor: → ← pasan de foto sin cerrar; Z amplía; Esc, o → tras la última, vuelven'],['E','Efectos: transiciones, revelado y textura de cine (activar / desactivar)']].map(([k,t])=>`<div><kbd>${k}</kbd><span>${t}</span></div>`).join('')}</div><p class="overlay-sub" style="margin-top:40px">En sala, usa escritorio extendido: presentación en el proyector y ventana de ponente en tu portátil. El reloj arranca al salir de la portada. Al terminar un vídeo, puedes repetirlo o volver a la página.</p>`)}
 function sources(){showCredits()}
 
 /* ---------- v6: reproductor ---------- */
@@ -2428,9 +2428,11 @@ function handleKey(e){
  if(e.key==='Escape'){exitTop();return}
  if(playerOpen()){
   const v=$('#main-player');
+  if(e.key.toLowerCase()==='f'){e.preventDefault();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else playerFull(true);return}
+  // Los controles nativos gestionan sus propias teclas; no aplicamos la acción dos veces.
+  if(document.activeElement===v)return;
   if(e.key===' '&&!document.activeElement?.closest('button')){e.preventDefault();togglePlay();return}
   if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();if(Number.isFinite(v.duration))v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+(e.key==='ArrowRight'?5:-5)));return}
-  if(e.key.toLowerCase()==='f'){e.preventDefault();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else playerFull(true);return}
   if(e.key==='Tab')trapFocus(e);
   return;
  }
