@@ -1859,7 +1859,7 @@ window.PAK_EMBEDDED=Object.assign(window.PAK_EMBEDDED||{},{"assets/apartment-pan
 const C=window.PAK_CONTENT, E=window.PAK_EMBEDDED||{};
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const url=f=>E[f]||f, image=(f,alt,cls='')=>`<img class="${cls}" src="${esc(url('assets/'+f))}" alt="${esc(alt)}" draggable="false">`;
+const url=f=>E[f]||(f==='assets/verano.mp4'?f+'?v=1080p-v1':f), image=(f,alt,cls='')=>`<img class="${cls}" src="${esc(url('assets/'+f))}" alt="${esc(alt)}" draggable="false">`;
 const imgButton=(f,alt,cls='')=>`<button class="imagebutton ${cls}" data-image="${f}" data-alt="${esc(alt)}" aria-label="Ampliar: ${esc(alt)}">${image(f,alt)}</button>`;
 // Medios: primero lo elegido en Preparar (guardado en este navegador), después lo encontrado en assets/.
 const found={}, local={};
