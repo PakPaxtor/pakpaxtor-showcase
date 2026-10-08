@@ -2265,7 +2265,7 @@ function sources(){showCredits()}
 /* ---------- v6: reproductor ---------- */
 function playMedia(id,opts={}){
  if(id==='archiveAudio'){const audio=$('#archive-player');if(audio){played.add(id);audio.paused?audio.play().catch(()=>note('Pulsa reproducir en la cinta.')):audio.pause();sendState()}else note('Falta la cinta: '+expectedName(id)+'.');return}
- const src=murl(id);if(!src){note('Falta '+expectedName(id)+'. Ponlo en la carpeta assets/ o elígelo en Preparar (M).');return}
+ const m=media(id),src=murl(id)||(m?.kind==='video'&&m.file?url(m.file):null);if(!src){note('Falta '+expectedName(id)+'. Ponlo en la carpeta assets/ o elígelo en Preparar (M).');return}
  if(!playerOpen()){playerReturnFocus=document.activeElement;pausedPreviewMedia=$$('video,audio',$('#screen')).filter(v=>!v.paused)}
  clearTimeout(compWait);compWait=null;
  $$('video,audio',$('#screen')).forEach(v=>v.pause());
